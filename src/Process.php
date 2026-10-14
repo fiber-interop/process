@@ -12,6 +12,14 @@ final class Process
     /** Seconds between SIGTERM and SIGKILL when a timeout expires. */
     public const GRACE = 2.0;
 
+    /**
+     * stdin is written at most this many bytes per fwrite(). Swoole 6.2 (SWOOLE_HOOK_PROC) turns the pipes into
+     * coroutine sockets whose fwrite() sends part of a buffer larger than the free socket space but returns 0,
+     * so the retry duplicates data (and it ends in false plus a notice that @ cannot hide from PHPUnit); see
+     * tests/upstream/swoole-hooked-pipe-large-fwrite.php. Once the fd polls writable, 64 KB always fits.
+     */
+    private const CHUNK = 65536;
+
     public readonly int $pid;
     /** @var \resource */
     private $proc;
@@ -83,7 +91,7 @@ final class Process
             $tasks[] = \async\go(function () {
                 $p = $this->pipes[0];
                 while ($this->stdin !== '' && $this->wait('writable', $p)) {
-                    $n = @\fwrite($p, $this->stdin);
+                    $n = @\fwrite($p, \substr($this->stdin, 0, self::CHUNK));
                     if ($n === false) {
                         break;                         // EPIPE: the child closed its stdin
                     }
@@ -132,7 +140,7 @@ final class Process
                 continue;                              // EINTR
             }
             foreach ($w as $p) {
-                $n = @\fwrite($p, $this->stdin);
+                $n = @\fwrite($p, \substr($this->stdin, 0, self::CHUNK));
                 $this->stdin = $n === false ? '' : (string) \substr($this->stdin, $n);
                 if ($this->stdin === '') {
                     \fclose($p);
