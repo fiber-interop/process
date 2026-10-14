@@ -1,0 +1,61 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [revolt, amp, react, phasync, swoole]
+    env:
+      FI_RUNTIME: ${{ matrix.runtime }}
+    steps:
+      # composer.json uses path repositories to ../api, ../scope and the adapters, so every repo is
+      # checked out as a sibling in work/ (same trick as fiber-interop.github.io's pages workflow).
+      - uses: actions/checkout@v4
+        with: { path: work/process }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/api, path: work/api, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/scope, path: work/scope, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/revolt, path: work/revolt, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/amp, path: work/amp, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/react, path: work/react, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/phasync, path: work/phasync, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: fiber-interop/swoole, path: work/swoole, fetch-depth: 0 }
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring${{ matrix.runtime == 'swoole' && ', swoole' || '' }}
+          tools: composer
+          coverage: none
+
+      - name: Install
+        working-directory: work/process
+        run: composer update --no-interaction --no-progress
+
+      - name: Tests
+        working-directory: work/process
+        run: vendor/bin/phpunit
+
+      # phasync/phasync (from Packagist) bundles prebuilt extension binaries; the adapter behaves
+      # differently with the extension loaded, so run the suite again with it.
+      - name: Tests, phasync extension loaded
+        if: matrix.runtime == 'phasync'
+        working-directory: work/process
+        run: |
+          v=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+          so=$PWD/vendor/phasync/phasync/ext/phasync-$v-nts-x86_64-glibc.so
+          test -f "$so"
+          php -d extension=$so vendor/bin/phpunit
