@@ -1,6 +1,6 @@
 <?php
 
-namespace async\process;
+namespace fiber\process;
 
 /** What a finished process left behind. $signal is the terminating signal, or null if it exited. */
 final class Result

@@ -9,5 +9,5 @@ if (!class_exists('Scope')) {
 
 $runtime = getenv('FI_RUNTIME') ?: 'revolt';
 $class = 'FiberInterop\\' . ucfirst($runtime) . '\\Adapter';
-async\setup(new $class());
+fiber\setup(new $class());
 fwrite(STDERR, "runtime=$runtime\n");

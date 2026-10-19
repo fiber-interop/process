@@ -1,9 +1,9 @@
 <?php
 
-namespace async\process;
+namespace fiber\process;
 
 /**
- * A started child process: returned by start(), awaitable with async\await() as often as you
+ * A started child process: returned by start(), awaitable with fiber\await() as often as you
  * like (it settles once, to a Result or a TimeoutException). $pid is the child's pid; with a
  * string command that is the /bin/sh running it.
  */
@@ -83,12 +83,12 @@ final class Process
         $this->waiters = [];
     }
 
-    /** @internal Inside run(): one task per pipe on async\readable()/writable(), exit by polling. */
+    /** @internal Inside run(): one task per pipe on fiber\readable()/writable(), exit by polling. */
     public function drive(): Result
     {
         $tasks = [];
         if (isset($this->pipes[0])) {
-            $tasks[] = \async\go(function () {
+            $tasks[] = \fiber\go(function () {
                 $p = $this->pipes[0];
                 while ($this->stdin !== '' && $this->wait('writable', $p)) {
                     $n = @\fwrite($p, \substr($this->stdin, 0, self::CHUNK));
@@ -101,7 +101,7 @@ final class Process
             });
         }
         foreach ([1 => 'out', 2 => 'err'] as $fd => $buf) {
-            $tasks[] = \async\go(function () use ($fd, $buf) {
+            $tasks[] = \fiber\go(function () use ($fd, $buf) {
                 $p = $this->pipes[$fd];
                 while (!\feof($p) && $this->wait('readable', $p)) {
                     $this->$buf .= (string) \fread($p, 65536);
@@ -113,13 +113,13 @@ final class Process
         $delay = 0.001;
         while (!$this->exited()) {
             if (\microtime(true) >= $this->deadline) {
-                $this->expire(static fn($s) => \async\sleep($s));
+                $this->expire(static fn($s) => \fiber\sleep($s));
                 break;
             }
-            \async\sleep(\min($delay, \max(0.001, $this->deadline - \microtime(true))));
+            \fiber\sleep(\min($delay, \max(0.001, $this->deadline - \microtime(true))));
             $delay = \min($delay * 2, 0.01);
         }
-        \async\await_all($tasks);
+        \fiber\await_all($tasks);
         return $this->finish();
     }
 
@@ -169,9 +169,9 @@ final class Process
     {
         $limit = $this->deadline === \PHP_FLOAT_MAX ? \PHP_FLOAT_MAX : $this->deadline + self::GRACE + 0.5;
         try {
-            ('async\\' . $what)($p, \max(0.001, $limit - \microtime(true)));
+            ('fiber\\' . $what)($p, \max(0.001, $limit - \microtime(true)));
             return true;
-        } catch (\async\TimeoutException) {
+        } catch (\fiber\TimeoutException) {
             return false;
         }
     }
@@ -189,7 +189,7 @@ final class Process
                 $sleep(0.005);
             }
         }
-        if ($this->pipes !== [] && \async\Registry::$active === []) {
+        if ($this->pipes !== [] && \fiber\Registry::$active === []) {
             foreach ($this->pipes as $p) {       // a grandchild may still hold them open
                 \fclose($p);
             }
